@@ -1,0 +1,37 @@
+{
+  "name": "aloka-lead-ops",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @aloka/web",
+    "dev:api": "tsx watch apps/api/src/server.ts",
+    "worker": "tsx apps/api/src/worker.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit && npm run typecheck -w @aloka/web",
+    "build": "npm run build -w @aloka/web",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "format": "prettier --write apps packages scripts tests docs README.md"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@supabase/supabase-js": "^2.57.0",
+    "dotenv": "^17.2.0",
+    "fastify": "^5.6.0",
+    "jose": "^6.1.0",
+    "pg": "^8.16.3",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "type": "module"
+}

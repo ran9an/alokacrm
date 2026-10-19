@@ -1,0 +1,26 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE staff(id uuid PRIMARY KEY, name text NOT NULL, role text NOT NULL CHECK(role IN ('admin','manager','sales','viewer')), active boolean NOT NULL DEFAULT true, capacity integer NOT NULL DEFAULT 100 CHECK(capacity>0), last_assigned_at timestamptz);
+CREATE TABLE projects(id text PRIMARY KEY, name text NOT NULL, location text NOT NULL);
+INSERT INTO projects VALUES ('aloka-green-county','Aloka Green County','Arasanahalli, Malur');
+CREATE TABLE leads(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), phone text NOT NULL CHECK(phone ~ '^\+[1-9][0-9]{7,14}$'), name text NOT NULL, project_id text NOT NULL REFERENCES projects, source text NOT NULL, owner_id uuid REFERENCES staff, stage text NOT NULL DEFAULT 'new' CHECK(stage IN ('new','contacted','qualified','visit_scheduled','visited','negotiation','booked','registered','lost')), whatsapp_consent boolean NOT NULL DEFAULT false, consent_evidence text NOT NULL DEFAULT '', opted_out boolean NOT NULL DEFAULT false, attribution jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(phone,project_id));
+CREATE INDEX leads_owner_stage ON leads(owner_id,stage);
+CREATE TABLE intake_receipts(source text NOT NULL,event_id text NOT NULL, payload_hash text NOT NULL, lead_id uuid REFERENCES leads, received_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(source,event_id));
+CREATE TABLE events(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, lead_id uuid REFERENCES leads, type text NOT NULL, actor text NOT NULL, data jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX events_lead ON events(lead_id,id);
+CREATE FUNCTION immutable_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'events are append only'; END $$;
+CREATE TRIGGER immutable_events BEFORE UPDATE OR DELETE ON events FOR EACH ROW EXECUTE FUNCTION immutable_event();
+CREATE TABLE followups(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),lead_id uuid NOT NULL REFERENCES leads, dedupe_key text NOT NULL UNIQUE, due_at timestamptz NOT NULL, body text NOT NULL, state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','sending','sent','cancelled','uncertain','failed')), attempts int NOT NULL DEFAULT 0, provider text, provider_message_id text, error text, sent_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX followups_due ON followups(due_at) WHERE state='pending';
+CREATE TABLE provider_receipts(provider text NOT NULL,event_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(provider,event_id));
+CREATE TABLE integration_jobs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),event_id bigint NOT NULL REFERENCES events, destination text NOT NULL CHECK(destination IN ('sheets','ga4','meta')), state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','done','failed')), attempts int NOT NULL DEFAULT 0, next_attempt_at timestamptz NOT NULL DEFAULT now(), error text, UNIQUE(event_id,destination));
+CREATE TABLE site_visits(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),lead_id uuid NOT NULL REFERENCES leads, scheduled_at timestamptz NOT NULL, status text NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','cancelled','rescheduled')), notes text);
+-- Deny direct PostgREST/browser access. Application API uses a dedicated trusted DB connection.
+ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE followups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE intake_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE provider_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integration_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_visits ENABLE ROW LEVEL SECURITY;

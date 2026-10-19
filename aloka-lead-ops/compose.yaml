@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: aloka
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: aloka
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aloka -d aloka"]
+      interval: 5s
+      retries: 15
+  migrate:
+    build: {context: ., target: api}
+    command: ["npm", "run", "db:migrate"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://aloka:${POSTGRES_PASSWORD}@db:5432/aloka
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    build: {context: ., target: api}
+    command: ["npx", "tsx", "apps/api/src/server.ts"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://aloka:${POSTGRES_PASSWORD}@db:5432/aloka
+    ports: ["127.0.0.1:4000:4000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  worker:
+    build: {context: ., target: worker}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://aloka:${POSTGRES_PASSWORD}@db:5432/aloka
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports: ["127.0.0.1:3000:3000"]
+    restart: unless-stopped
+volumes:
+  pgdata:

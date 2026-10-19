@@ -1,0 +1,58 @@
+{
+  "name": "Aloka - canonical intake gateway",
+  "active": false,
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Source adapter webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aloka-intake",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode"
+      }
+    },
+    {
+      "id": "intake",
+      "name": "CRM intake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CRM_API_URL + \"/v1/intake\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Source adapter webhook": {
+      "main": [
+        [
+          {
+            "node": "CRM intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

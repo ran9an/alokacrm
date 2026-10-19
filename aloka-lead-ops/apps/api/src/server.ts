@@ -2,8 +2,9 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { pool, tx, event } from "./db.js";
-import { user, service, write } from "./auth.js";
+import { user, service, write, login, logout, hashPassword } from "./auth.js";
 import { intake } from "./leads.js";
 import {
   intakeSchema,
@@ -13,6 +14,9 @@ import {
   visitSchema,
   visitPatchSchema,
   quickSendSchema,
+  loginSchema,
+  staffSchema,
+  manualLeadSchema,
 } from "../../../packages/contracts/src/index.js";
 import { messaging } from "./messaging.js";
 export function build() {
@@ -40,6 +44,16 @@ export function build() {
     await pool.query("SELECT 1");
     return { ok: true };
   });
+  app.post("/v1/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req) => {
+    const credentials = loginSchema.parse(req.body);
+    return login(credentials.email, credentials.password);
+  });
+  app.post("/v1/auth/logout", async (req, reply) => {
+    await user(req);
+    await logout(req.headers.authorization?.replace(/^Bearer /, ""));
+    return reply.code(204).send();
+  });
+  app.get("/v1/me", async (req) => user(req));
   app.post("/v1/intake", async (req, reply) => {
     service(req, "INTAKE_TOKEN");
     return reply
@@ -60,6 +74,12 @@ export function build() {
         [u.role, u.id, q.limit, q.offset],
       )
     ).rows;
+  });
+  app.post("/v1/leads", async (req, reply) => {
+    const u = await user(req);
+    write(u.role);
+    const input = manualLeadSchema.parse(req.body);
+    return reply.code(201).send(await intake({ ...input, eventId: randomUUID() }, u.id));
   });
   app.get("/v1/leads/:id", async (req) => {
     const u = await user(req);
@@ -130,7 +150,38 @@ export function build() {
   app.get("/v1/staff", async (req) => {
     const u = await user(req);
     if (!["admin", "manager"].includes(u.role)) throw Object.assign(Error("Forbidden"), { statusCode: 403 });
-    return (await pool.query("SELECT id,name,role,active,capacity FROM staff ORDER BY active DESC,name")).rows;
+    return (await pool.query("SELECT id,name,email,role,active,capacity,created_at FROM staff ORDER BY active DESC,name")).rows;
+  });
+  app.post("/v1/staff", async (req, reply) => {
+    const u = await user(req);
+    if (u.role !== "admin") throw Object.assign(Error("Forbidden"), { statusCode: 403 });
+    const p = staffSchema.parse(req.body);
+    const passwordHash = await hashPassword(p.password);
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO staff(id,name,email,password_hash,role,capacity,active,must_change_password)
+         VALUES(gen_random_uuid(),$1,$2,$3,$4,$5,true,false)
+         RETURNING id,name,email,role,active,capacity,created_at,must_change_password`,
+        [p.name, p.email, passwordHash, p.role, p.capacity],
+      );
+      return reply.code(201).send(rows[0]);
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505")
+        throw Object.assign(Error("A staff account already uses this email"), { statusCode: 409 });
+      throw error;
+    }
+  });
+  app.get("/v1/admin/summary", async (req) => {
+    const u = await user(req);
+    if (!['admin','manager'].includes(u.role)) throw Object.assign(Error("Forbidden"), { statusCode: 403 });
+    const { rows } = await pool.query(
+      `SELECT
+        (SELECT count(*)::int FROM leads) AS total_leads,
+        (SELECT count(*)::int FROM leads WHERE owner_id IS NULL AND stage NOT IN ('lost','registered')) AS unassigned,
+        (SELECT count(*)::int FROM staff WHERE active) AS active_staff,
+        (SELECT count(*)::int FROM followups WHERE state='pending' AND due_at<now()) AS overdue_followups`,
+    );
+    return rows[0];
   });
   app.post("/v1/leads/:id/activities", async (req, reply) => {
     const u = await user(req); write(u.role);

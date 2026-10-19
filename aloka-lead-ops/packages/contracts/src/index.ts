@@ -68,6 +68,20 @@ export const followupSchema = z.object({
   key: z.string().min(1).max(200),
 });
 export type Role = "admin" | "manager" | "sales" | "viewer";
+export const loginSchema = z.object({
+  email: z.email().transform((value) => value.trim().toLowerCase()),
+  password: z.string().min(10).max(200),
+});
+export const staffSchema = z.object({
+  name: z.string().trim().min(2).max(150),
+  email: z.email().transform((value) => value.trim().toLowerCase()),
+  role: z.enum(["admin", "manager", "sales", "viewer"]),
+  capacity: z.number().int().min(1).max(1000).default(100),
+  password: z.string().min(12).max(200),
+});
+export const manualLeadSchema = intakeSchema.omit({ eventId: true, source: true }).extend({
+  source: z.literal("manual").default("manual"),
+});
 export const activitySchema = z.object({
   kind: z.enum(["call", "note", "task"]),
   body: z.string().trim().min(1).max(2000),

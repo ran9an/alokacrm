@@ -1,35 +1,30 @@
 # Aloka Developers · Lead operations
 
-A monorepo foundation for the private Aloka sales workspace. PostgreSQL is authoritative; Next.js is the team interface; n8n orchestrates adapters and schedules. Your existing VPS OpenWA service remains external and replaceable through `MessagingProvider`. No OpenWA installation is included.
+A private, working lead operations workspace for Aloka Developers. PostgreSQL is authoritative; Next.js is the team interface; Fastify handles authentication and CRM operations; n8n orchestrates adapters and schedules. The existing VPS OpenWA service remains external and replaceable through `MessagingProvider`.
 
 ## Start locally
 
-Requires Node 22+, npm, PostgreSQL 17 (or a Supabase database), and a Supabase Auth project configured with asymmetric signing keys.
+Requires Node 22+, npm, and PostgreSQL 17.
 
 ```powershell
 Copy-Item .env.example .env
 npm ci
 docker compose up -d db
 npm run db:migrate
+npm run staff:provision
 npm run dev:api
-# In another terminal, copy the NEXT_PUBLIC_* entries into apps/web/.env.local
+# In another terminal
 npm run dev:web
 # Optional dispatcher, messaging remains disabled until explicitly configured
 npm run worker
 ```
 
-Set DATABASE_URL before migration. The example DB password is only for local use. Root `.env` configures API/worker/scripts; Next.js reads `apps/web/.env.local`. Docker Compose supplies public settings as build arguments. Rebuild web when these change.
+Set `DATABASE_URL`, service tokens, `ADMIN_*`, and `PRIYA_*` before migration and provisioning. Root `.env` configures API, worker, and scripts; Next.js reads `apps/web/.env.local`. Actual credentials must never be committed.
 
-Create a user in Supabase Auth and insert its exact UUID into `staff` using the secure database console:
-
-```sql
-INSERT INTO staff(id,name,role) VALUES ('YOUR-AUTH-USER-UUID','Your name','admin');
-```
-
-Provision sales users similarly with role `sales`; set capacity and active flags. No public signup grants CRM access. Do not invent staff IDs or use a shared salesperson account.
+`npm run staff:provision` creates or updates the initial administrator and Priya accounts using scrypt password hashes. Administrators can create additional individual accounts from **Staff & access** in the CRM. No public signup exists and shared accounts are prohibited.
 
 ```text
-apps/web                 Next.js dashboard skeleton, sign-in, scoped register, profile
+apps/web                 Next.js login, dashboard, lead intake, staff administration and lead operations
 apps/api                 authenticated API, intake, assignment, outbound worker
 packages/contracts       validation and domain types
 packages/integrations    OpenWA-independent analytics and Sheets adapters
@@ -52,7 +47,7 @@ npm run build
 
 Start with [`docs/README.md`](docs/README.md). It links the canonical architecture, schema, RBAC, business rules, workflows, API, WhatsApp, document-management, security, UI/UX, testing, deployment and roadmap documents. Architectural decisions are recorded under [`docs/decisions/`](docs/decisions/).
 
-PGlite runs actual PostgreSQL schema tests without Docker; live PostgreSQL concurrency and external provider checks are separate rollout checks. See docs/implementation-plan.md for acceptance criteria and remaining product work. The dashboard intentionally contains no invented customer data. It is a skeleton, not a finished CRM.
+PGlite runs actual PostgreSQL schema tests without Docker; live PostgreSQL concurrency and external provider checks remain separate rollout checks. See docs/implementation-plan.md for acceptance criteria and remaining product work. The dashboard contains no invented live customer data.
 
 ## Important boundaries
 

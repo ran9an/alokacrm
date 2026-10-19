@@ -4,7 +4,11 @@ Local base URL: `http://localhost:4000`. JSON limit: 64 KB. Default rate limit: 
 
 ## Authentication
 
-- Staff routes: `Authorization: Bearer <Supabase JWT>`.
+- `POST /v1/auth/login` accepts an individual staff email and password and returns a 12-hour opaque session token.
+- Staff routes: `Authorization: Bearer <session token>`.
+- `POST /v1/auth/logout` revokes the current session; `GET /v1/me` returns the active staff profile.
+- Passwords use salted scrypt hashes. Only SHA-256 session-token hashes are stored.
+- Supabase JWT verification remains available as an optional migration-compatible path when issuer and JWKS settings are configured.
 - Service routes: dedicated bearer secret named in `.env.example`.
 - Errors use `{ "error": "safe message", "requestId": "..." }`; validation errors also include `issues`.
 
@@ -13,9 +17,12 @@ Local base URL: `http://localhost:4000`. JSON limit: 64 KB. Default rate limit: 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/v1/leads?limit=50&offset=0` | Authorized lead page |
+| POST | `/v1/leads` | Authenticated manual lead intake with deduplication and assignment |
 | GET | `/v1/leads/:id` | Lead, events, follow-ups, activities, visits, document metadata and messages |
 | PATCH | `/v1/leads/:id` | Stage, opt-out, assignment, qualification and lost reason |
 | GET | `/v1/staff` | Manager/admin staff list |
+| POST | `/v1/staff` | Admin-only individual staff account creation |
+| GET | `/v1/admin/summary` | Admin/manager operational counts |
 | POST | `/v1/leads/:id/followups` | Schedule idempotent follow-up |
 | POST | `/v1/leads/:id/activities` | Record call, note or task |
 | POST | `/v1/leads/:id/site-visits` | Schedule visit |

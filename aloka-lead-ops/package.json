@@ -13,12 +13,12 @@
     "typecheck": "tsc --noEmit && npm run typecheck -w @aloka/web",
     "build": "npm run build -w @aloka/web",
     "db:migrate": "tsx scripts/migrate.ts",
+    "staff:provision": "tsx scripts/provision-staff.ts",
     "format": "prettier --write apps packages scripts tests docs README.md"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@supabase/supabase-js": "^2.57.0",
     "dotenv": "^17.2.0",
     "fastify": "^5.6.0",
     "jose": "^6.1.0",

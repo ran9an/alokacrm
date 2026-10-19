@@ -1,7 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowClockwise,
   Buildings,
@@ -18,6 +17,8 @@ import {
   UsersThree,
   WarningCircle,
   WhatsappLogo,
+  UserPlus,
+  PlusCircle,
 } from "@phosphor-icons/react";
 
 type Lead = {
@@ -42,6 +43,9 @@ type Profile = {
   documents: { id: string; kind: string; access_class: string; original_name: string; status: string; created_at: string }[];
   messages: { id: string; action: string; state: string; created_at: string }[];
 };
+
+type StaffProfile = { id: string; name: string; email: string; role: "admin" | "manager" | "sales" | "viewer"; capacity: number; must_change_password?: boolean };
+type StaffRow = StaffProfile & { active: boolean; created_at: string };
 
 const stages = [
   "new",
@@ -72,6 +76,8 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
+  const [staff, setStaff] = useState<StaffProfile | null>(preview ? { id: "preview-admin", name: "Aloka Administrator", email: "admin@alokadevelopers.com", role: "admin", capacity: 1000 } : null);
+  const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
   const [leads, setLeads] = useState<Lead[]>(preview ? previewLeads : []);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -91,8 +97,26 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
   const [visitAt, setVisitAt] = useState("");
   const [meetingPoint, setMeetingPoint] = useState("Kadugodi Metro Station");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [leadOpen, setLeadOpen] = useState(false);
+  const [leadForm, setLeadForm] = useState({ name: "", phone: "", consent: false, evidence: "Manual entry with customer permission" });
+  const [staffForm, setStaffForm] = useState({ name: "Priya", email: "priya@alokadevelopers.com", role: "sales", capacity: 100, password: "" });
   const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const pageSize = 50;
+
+  useEffect(() => {
+    if (preview) return;
+    const saved = sessionStorage.getItem("aloka_crm_session");
+    if (!saved) return;
+    const parsed = JSON.parse(saved) as { token: string; staff: StaffProfile };
+    setToken(parsed.token);
+    setStaff(parsed.staff);
+    load(parsed.token, 0).catch(() => {
+      sessionStorage.removeItem("aloka_crm_session");
+      setToken("");
+      setStaff(null);
+    });
+  }, [preview]);
 
   const visibleLeads = useMemo(() => leads.filter((lead) => {
     const matchesText = `${lead.name} ${lead.phone} ${lead.source}`.toLowerCase().includes(query.trim().toLowerCase());
@@ -104,17 +128,16 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
     setBusy(true);
     setError("");
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !anonKey) throw new Error("Authentication is not configured.");
-      const client = createClient(supabaseUrl, anonKey, { auth: { persistSession: false } });
-      const { data, error: authError } = await client.auth.signInWithPassword({ email, password });
-      if (authError || !data.session) throw authError || new Error("No session returned.");
+      const response = await fetch(`${url}/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to sign in.");
       setPassword("");
-      setToken(data.session.access_token);
-      await load(data.session.access_token, 0);
+      setToken(result.token);
+      setStaff(result.staff);
+      sessionStorage.setItem("aloka_crm_session", JSON.stringify({ token: result.token, staff: result.staff }));
+      await load(result.token, 0);
     } catch (reason) {
-      setError(reason instanceof Error && reason.message === "Authentication is not configured." ? reason.message : "Unable to sign in. Check your account and connection.");
+      setError(reason instanceof Error ? reason.message : "Unable to sign in. Check your account and connection.");
     } finally {
       setBusy(false);
     }
@@ -265,11 +288,49 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to send message."); } finally { setBusy(false); }
   }
 
-  function signOut() {
+  async function signOut() {
+    if (token) await fetch(`${url}/v1/auth/logout`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
+    sessionStorage.removeItem("aloka_crm_session");
     setToken("");
+    setStaff(null);
     setLeads([]);
     setSelected(null);
     setNotice("");
+  }
+
+  async function openAdmin() {
+    setAdminOpen(true);
+    if (preview) {
+      setStaffRows([{ id: "sample-sales", name: "Priya", email: "priya@alokadevelopers.com", role: "sales", capacity: 100, active: true, created_at: new Date().toISOString() }]);
+      return;
+    }
+    const response = await fetch(`${url}/v1/staff`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) { setError("Unable to load staff accounts."); return; }
+    setStaffRows(await response.json());
+  }
+
+  async function addLead(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      if (preview) { setNotice("Preview lead entry is disabled."); return; }
+      const response = await fetch(`${url}/v1/leads`, { method:"POST", headers:{ Authorization:`Bearer ${token}`, "Content-Type":"application/json" }, body:JSON.stringify({ name:leadForm.name, phone:leadForm.phone, project:"aloka-green-county", source:"manual", consent:{ whatsapp:leadForm.consent, evidence:leadForm.evidence }, attribution:{ enteredBy:staff?.email || "crm" } }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to add lead.");
+      setLeadForm({ name:"", phone:"", consent:false, evidence:"Manual entry with customer permission" });
+      await load(token, 0); setNotice(result.duplicate ? "Existing Green County lead found." : "Lead added and assigned.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to add lead."); } finally { setBusy(false); }
+  }
+
+  async function addStaff(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      if (preview) { setNotice("Preview staff creation is disabled."); return; }
+      const response = await fetch(`${url}/v1/staff`, { method:"POST", headers:{ Authorization:`Bearer ${token}`, "Content-Type":"application/json" }, body:JSON.stringify({ ...staffForm, capacity:Number(staffForm.capacity) }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create staff account.");
+      setStaffRows((current) => [result, ...current]);
+      setStaffForm({ name:"", email:"", role:"sales", capacity:100, password:"" }); setNotice("Staff account created.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create staff account."); } finally { setBusy(false); }
   }
 
   const signedIn = Boolean(token) || preview;
@@ -285,12 +346,13 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
           <a href="#leads"><UsersThree size={18} weight="duotone" />Leads <em>{leads.length || ""}</em></a>
           <a className="disabled" href="#followups" aria-disabled="true"><ChatCircleText size={18} weight="duotone" />Follow-ups</a>
           <a className="disabled" href="#visits" aria-disabled="true"><CalendarCheck size={18} weight="duotone" />Site visits</a>
+          {(staff?.role === "admin" || staff?.role === "manager") && <><p>Administration</p><button className="nav-button" onClick={openAdmin}><UserPlus size={18} weight="duotone" />Staff &amp; access</button></>}
           <p>Sales</p>
           <a className="disabled" href="#inventory" aria-disabled="true"><Buildings size={18} weight="duotone" />Inventory</a>
           <a className="disabled" href="#quotations" aria-disabled="true"><ClipboardText size={18} weight="duotone" />Quotations</a>
           <a className="disabled" href="#bookings" aria-disabled="true"><HouseLine size={18} weight="duotone" />Bookings</a>
         </nav>
-        <div className="sidebar-footer"><span className="avatar small">AR</span><span><b>Aloka workspace</b><small>{preview ? "Preview mode" : "Private access"}</small></span></div>
+        <div className="sidebar-footer"><span className="avatar small">{staff ? initials(staff.name) : "AD"}</span><span><b>{staff?.name || "Aloka workspace"}</b><small>{preview ? "Preview mode" : staff ? pretty(staff.role) : "Private access"}</small></span></div>
       </aside>
 
       <main className="main-area">
@@ -300,7 +362,7 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
           <div className="top-actions">
             <span className="status-dot"><i />Systems ready</span>
             {signedIn && !preview && <button className="text-button icon-button" onClick={signOut}><SignOut size={17} />Sign out</button>}
-            <span className="avatar">AD</span>
+            <span className="avatar">{staff ? initials(staff.name) : "AD"}</span>
           </div>
         </header>
 
@@ -323,13 +385,13 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
           <div className="content" id="dashboard">
             <section className="page-heading">
               <div><span className="eyebrow">{todayLabel}</span><h1>Good morning.</h1><p>Here is what needs attention across Aloka Green County.</p></div>
-              <button className="secondary-button icon-button" onClick={() => load().catch((reason) => setError(reason.message))} disabled={busy}><ArrowClockwise size={17} />Refresh data</button>
+              <div className="heading-actions"><button className="primary-button icon-button" onClick={() => setLeadOpen(true)}><PlusCircle size={17} />Add lead</button><button className="secondary-button icon-button" onClick={() => load().catch((reason) => setError(reason.message))} disabled={busy}><ArrowClockwise size={17} />Refresh data</button></div>
             </section>
 
             <section className="project-spotlight" aria-label="Current project">
               <img src="/brand/green-county-aerial.png" alt="Aerial view representing a developed villa plot community near Bengaluru" />
               <div className="project-shade" />
-              <div className="project-copy"><span className="project-kicker"><MapPin size={15} weight="fill" />ARASANAHALLI · MALUR</span><h2>Aloka Green County</h2><p>Every enquiry, visit and next action—visible in one operational view.</p></div>
+              <div className="project-copy"><span className="project-kicker"><MapPin size={15} weight="fill" />ARASANAHALLI · STRR-WHITEFIELD EXIT</span><h2>Aloka Green County</h2><p>Devanagonthi, East Bengaluru · STRR just 2 km away</p></div>
               <div className="project-status"><span><i />Active project</span><b>{leads.length}</b><small>accessible leads</small></div>
             </section>
 
@@ -389,6 +451,8 @@ export function Dashboard({ preview = false }: { preview?: boolean }) {
       {followupOpen && selected && <div className="modal-backdrop"><form className="modal" onSubmit={scheduleFollowup}><span className="eyebrow">NEXT ACTION</span><h2>Schedule follow-up</h2><p>Set one clear action for {selected.lead.name}.</p><label>Date and time<input type="datetime-local" required value={followupAt} onChange={(event) => setFollowupAt(event.target.value)} /></label><label>Note<textarea required maxLength={1000} value={followupBody} onChange={(event) => setFollowupBody(event.target.value)} placeholder="What should the team do next?" /></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setFollowupOpen(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Schedule"}</button></div></form></div>}
       {activityOpen && selected && <div className="modal-backdrop"><form className="modal" onSubmit={addActivity}><span className="eyebrow">ACTIVITY</span><h2>Record an update</h2><p>Keep the team’s next decision grounded in the conversation.</p><label>Type<select value={activityKind} onChange={(event) => setActivityKind(event.target.value)}><option value="call">Call</option><option value="note">Note</option><option value="task">Task</option></select></label><label>Details<textarea required maxLength={2000} value={activityBody} onChange={(event) => setActivityBody(event.target.value)} placeholder="Record the useful outcome or next action." /></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setActivityOpen(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save activity"}</button></div></form></div>}
       {visitOpen && selected && <div className="modal-backdrop"><form className="modal" onSubmit={scheduleVisit}><span className="eyebrow">SITE VISIT</span><h2>Schedule a visit</h2><p>Choose a time and one approved meeting point.</p><label>Date and time<input type="datetime-local" required value={visitAt} onChange={(event) => setVisitAt(event.target.value)} /></label><label>Meeting point<select value={meetingPoint} onChange={(event) => setMeetingPoint(event.target.value)}><option>Hope Farm</option><option>Kadugodi Metro Station</option><option>Hoskote Toll Gate</option><option>Chikka Tirupathi Temple</option><option>Sarjapur Police Station</option><option>Corporate Office in Kammasandra</option><option>Self-drive</option></select></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setVisitOpen(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Schedule visit"}</button></div></form></div>}
+      {leadOpen && <div className="modal-backdrop"><form className="modal" onSubmit={addLead}><span className="eyebrow">LEAD INTAKE</span><h2>Add a Green County enquiry</h2><p>Phone and project are checked for duplicates before a record is created.</p><label>Full name<input required maxLength={150} value={leadForm.name} onChange={(event) => setLeadForm({ ...leadForm, name:event.target.value })} placeholder="Use the person’s genuine name" /></label><label>Mobile number<input required inputMode="tel" value={leadForm.phone} onChange={(event) => setLeadForm({ ...leadForm, phone:event.target.value })} placeholder="10-digit mobile number" /></label><label className="check-row"><input type="checkbox" checked={leadForm.consent} onChange={(event) => setLeadForm({ ...leadForm, consent:event.target.checked })} /><span>Customer consented to WhatsApp communication</span></label><label>Consent evidence<input required maxLength={500} value={leadForm.evidence} onChange={(event) => setLeadForm({ ...leadForm, evidence:event.target.value })} /></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setLeadOpen(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Add lead"}</button></div></form></div>}
+      {adminOpen && (staff?.role === "admin" || staff?.role === "manager") && <div className="modal-backdrop admin-backdrop"><section className="admin-panel"><div className="drawer-head"><div><span className="eyebrow">ADMINISTRATION</span><h2>Staff and access</h2><p>Provision individual accounts. Shared credentials are not permitted.</p></div><button className="close-button" onClick={() => setAdminOpen(false)}>Close</button></div>{staff?.role === "admin" && <form className="staff-form" onSubmit={addStaff}><label>Name<input required value={staffForm.name} onChange={(event) => setStaffForm({ ...staffForm, name:event.target.value })} /></label><label>Email<input type="email" required value={staffForm.email} onChange={(event) => setStaffForm({ ...staffForm, email:event.target.value })} /></label><label>Role<select value={staffForm.role} onChange={(event) => setStaffForm({ ...staffForm, role:event.target.value })}><option value="sales">Sales</option><option value="manager">Manager</option><option value="viewer">Viewer</option><option value="admin">Administrator</option></select></label><label>Capacity<input type="number" min="1" max="1000" required value={staffForm.capacity} onChange={(event) => setStaffForm({ ...staffForm, capacity:Number(event.target.value) })} /></label><label className="password-field">Temporary password<input type="password" minLength={12} required value={staffForm.password} onChange={(event) => setStaffForm({ ...staffForm, password:event.target.value })} placeholder="At least 12 characters" /></label><button className="primary-button icon-button" disabled={busy}><UserPlus size={17} />Create account</button></form>}<div className="staff-list"><div className="staff-list-head"><b>Active directory</b><span>{staffRows.length} accounts</span></div>{staffRows.map((member) => <article key={member.id}><span className="avatar lead-avatar">{initials(member.name)}</span><div><b>{member.name}</b><small>{member.email}</small></div><span className={`role-label role-${member.role}`}>{pretty(member.role)}</span><small>{member.capacity} lead capacity</small></article>)}</div></section></div>}
     </div>
   );
 }

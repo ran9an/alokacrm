@@ -4,7 +4,8 @@ PostgreSQL 17 is authoritative. Apply migrations in filename order with `npm run
 
 | Table | Purpose | Important constraints |
 |---|---|---|
-| `staff` | CRM membership, role, capacity | Active membership required; role is admin, manager, sales or viewer |
+| `staff` | CRM membership, credentials, role, capacity | Unique lowercase email; salted password hash; role is admin, manager, sales or viewer |
+| `sessions` | Revocable staff login sessions | Only token hashes are stored; sessions expire after 12 hours |
 | `projects` | Project master | Seed includes `aloka-green-county` |
 | `leads` | One opportunity per phone and project | Unique `(phone, project_id)`; controlled stages; consent and suppression flags |
 | `intake_receipts` | Source idempotency | Primary key `(source, event_id)` |

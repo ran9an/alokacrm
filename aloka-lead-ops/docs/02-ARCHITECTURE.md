@@ -17,7 +17,7 @@ Website / portals / WhatsApp
       |              |
       |              +-> messaging worker -> MessagingProvider -> OpenWA
       v
- Next.js CRM <- Supabase Auth JWT
+ Next.js CRM <- CRM session authentication
 ```
 
 - `apps/web`: Next.js 16 and React 19 user interface.
@@ -29,7 +29,7 @@ Website / portals / WhatsApp
 
 ## Trust boundaries
 
-The browser authenticates with Supabase and sends its JWT to the API. The API resolves the role from `staff`; user-editable JWT metadata is never authoritative. PostgreSQL is the source of truth. Google Sheets is a reporting projection. OpenWA is isolated behind `MessagingProvider`.
+The browser authenticates against the API with an individual staff email and password, then sends an opaque session token. Passwords use salted scrypt hashes and only session-token hashes are stored. The API resolves the role from `staff`; client claims are never authoritative. Optional Supabase JWT verification remains available during migration. PostgreSQL is the source of truth. Google Sheets is a reporting projection. OpenWA is isolated behind `MessagingProvider`.
 
 ## Consistency model
 

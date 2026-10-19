@@ -15,8 +15,13 @@ test("Migration, dedupe, event immutability, and queue constraints", async () =>
     await db.exec(
       await readFile("database/migrations/003_operational_crm.sql", "utf8"),
     );
+    await db.exec(
+      await readFile("database/migrations/004_local_auth_and_project_facts.sql", "utf8"),
+    );
+    const project = await db.query<{ location: string }>("SELECT location FROM projects WHERE id='aloka-green-county'");
+    assert.equal(project.rows[0].location, "Arasanahalli, STRR-Whitefield Exit, Devanagonthi, East Bengaluru");
     const r = await db.query<{ id: string }>(
-      "INSERT INTO leads(phone,name,project_id,source) VALUES('+919187969708','Test buyer','aloka-green-county','manual') RETURNING id",
+      "INSERT INTO leads(phone,name,project_id,source) VALUES('+919187969708','Test Person','aloka-green-county','manual') RETURNING id",
     );
     const id = r.rows[0].id;
     await assert.rejects(() =>
@@ -44,8 +49,9 @@ test("Migration, dedupe, event immutability, and queue constraints", async () =>
       ),
     );
     const staff = await db.query<{ id: string }>(
-      "INSERT INTO staff(id,name,role) VALUES(gen_random_uuid(),'Demo Executive','sales') RETURNING id",
+      "INSERT INTO staff(id,name,email,password_hash,role) VALUES(gen_random_uuid(),'Priya','priya@alokadevelopers.com','test-hash','sales') RETURNING id",
     );
+    await db.query("INSERT INTO sessions(token_hash,staff_id,expires_at) VALUES('test-token',$1,now()+interval '1 hour')", [staff.rows[0].id]);
     await db.query(
       "INSERT INTO activities(lead_id,kind,body,created_by) VALUES($1,'call','Discussed site visit',$2)",
       [id, staff.rows[0].id],

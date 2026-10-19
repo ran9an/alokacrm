@@ -106,7 +106,7 @@ npm run build
 
 ## Documentation
 
-Start with the [documentation index](aloka-lead-ops/docs/README.md), then review the detailed guides for architecture, database design, permissions, workflows, API contracts, WhatsApp integration, security, testing, deployment, and the implementation roadmap.
+Start with the [Product Requirements Document](PRD.md) for the product scope, requirements, delivery phases, and acceptance criteria. The [documentation index](aloka-lead-ops/docs/README.md) links the detailed architecture, database design, permissions, workflows, API contracts, WhatsApp integration, security, testing, deployment, and implementation roadmap.
 
 ## Project status
 

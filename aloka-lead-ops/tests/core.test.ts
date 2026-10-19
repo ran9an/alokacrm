@@ -6,7 +6,7 @@ import {
   sendWindow,
   intakeSchema,
 } from "../packages/contracts/src/index.js";
-import { secret } from "../apps/api/src/auth.js";
+import { secret, hashPassword, verifyPassword } from "../apps/api/src/auth.js";
 import { safeCell } from "../packages/integrations/src/index.js";
 test("Indian and international phone normalization", () => {
   assert.equal(phone("9187969708"), "+919187969708");
@@ -28,6 +28,12 @@ test("Absent or weak service secrets fail closed", () => {
   assert.equal(secret(undefined, undefined), false);
   assert.equal(secret("short", "short"), false);
   assert.equal(secret("x".repeat(32), "x".repeat(32)), true);
+});
+test("Staff passwords are salted and verified", async () => {
+  const encoded = await hashPassword("Priya-Strong-Password-2026");
+  assert.equal(encoded.startsWith("scrypt$"), true);
+  assert.equal(await verifyPassword("Priya-Strong-Password-2026", encoded), true);
+  assert.equal(await verifyPassword("wrong-password", encoded), false);
 });
 test("Consent required in intake and formula export escaped", () => {
   assert.equal(

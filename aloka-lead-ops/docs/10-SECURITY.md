@@ -2,7 +2,8 @@
 
 ## Implemented controls
 
-- Supabase JWT signature, issuer, audience, expiry and subject validation.
+- Salted scrypt password hashes, opaque random sessions, hashed token storage, expiry and revocation.
+- Optional Supabase JWT signature, issuer, audience, expiry and subject validation for migration compatibility.
 - Active `staff` membership and database-derived role.
 - SQL ownership filters for sales users.
 - Zod validation at API boundaries.
@@ -12,7 +13,7 @@
 - 64 KB request limit and rate limiting.
 - PostgreSQL RLS blocks browser table access.
 - Append-only audit-event trigger.
-- No secrets in public Next.js variables except Supabase public settings.
+- No credentials or service secrets in public Next.js variables.
 
 ## Production requirements
 

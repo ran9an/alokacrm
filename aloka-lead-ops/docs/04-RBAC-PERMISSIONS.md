@@ -12,11 +12,11 @@ Roles come only from the `staff` table after JWT verification.
 | Use approved WhatsApp actions | Yes | Yes | Own only | No |
 | List staff | Yes | Yes | No | No |
 
-Sales ownership is enforced inside SQL predicates, not only in the UI. An inaccessible lead returns 404 to avoid confirming its existence. Disabled users fail authentication even with a valid Supabase token.
+Sales ownership is enforced inside SQL predicates, not only in the UI. An inaccessible lead returns 404 to avoid confirming its existence. Disabled users fail authentication even with an otherwise valid session.
 
 ## Provisioning
 
-Create the Supabase Auth identity first, then insert its exact UUID into `staff`. No shared sales accounts are allowed.
+Provision the initial administrator and Priya accounts with `npm run staff:provision`. Administrators create additional individual accounts from **Staff & access**. No shared sales accounts are allowed.
 
 ```sql
 INSERT INTO staff(id, name, role)
